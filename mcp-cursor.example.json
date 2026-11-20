@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "drupal-hybrid-search": {
+      "command": "/Users/priyaroy/ttncode/drupal-vector-search/mcp-drush.sh"
+    }
+  }
+}

@@ -1,0 +1,9 @@
+facets:
+  css:
+    theme:
+      css/facets.css: {}
+
+highlight:
+  css:
+    theme:
+      css/highlight.css: {}

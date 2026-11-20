@@ -1,0 +1,26 @@
+<?php
+
+/**
+ * Append to settings.php after a normal site install (or merge with sender's file).
+ */
+
+$databases['default']['default'] = [
+  'database' => 'drupal',
+  'username' => 'drupal',
+  'password' => 'drupal_pass',
+  'prefix' => '',
+  'host' => getenv('DRUPAL_DB_HOST') ?: 'postgres',
+  'port' => (int) (getenv('DRUPAL_DB_PORT') ?: '5432'),
+  'driver' => 'pgsql',
+  'namespace' => 'Drupal\\pgsql\\Driver\\Database\\pgsql',
+  'autoload' => 'core/modules/pgsql/src/Driver/Database/pgsql/',
+];
+
+$settings['trusted_host_patterns'] = [
+  '^localhost$',
+  '^127\\.0\\.0\\.1$',
+];
+
+if (file_exists($app_root . '/' . $site_path . '/settings.local.php')) {
+  include $app_root . '/' . $site_path . '/settings.local.php';
+}

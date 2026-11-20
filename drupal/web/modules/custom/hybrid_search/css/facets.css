@@ -1,0 +1,70 @@
+/**
+ * @file
+ * Keep the Tags and Content type facets visible on the hybrid search page.
+ *
+ * Olivero draws the sidebar on the same grid row as the results below
+ * 1000px, so the facet list sits underneath the results. These rules give
+ * the sidebar its own row on narrow viewports and a right-hand column on
+ * wide viewports.
+ */
+
+.path-hybrid-search .sidebar-grid {
+  grid-template-rows: auto;
+}
+
+.path-hybrid-search .sidebar-grid > .site-main,
+.path-hybrid-search .sidebar-grid .region--sidebar {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.path-hybrid-search .sidebar-grid .region--sidebar {
+  grid-row: 1;
+  margin-block-end: var(--sp2);
+}
+
+.path-hybrid-search .sidebar-grid > .site-main {
+  grid-row: 2;
+}
+
+@media (min-width: 62.5rem) {
+  .path-hybrid-search .sidebar-grid > .site-main {
+    grid-column: 1 / 10;
+    grid-row: 1;
+  }
+
+  .path-hybrid-search .sidebar-grid .region--sidebar {
+    grid-column: 10 / -1;
+    grid-row: 1;
+    align-self: start;
+    margin-block-end: 0;
+  }
+}
+
+.path-hybrid-search .region--sidebar .block-facets {
+  margin-block-end: var(--sp2);
+}
+
+.path-hybrid-search .region--sidebar .block-facet-blocktags .facets-widget-checkbox {
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.path-hybrid-search .region--sidebar .facets-widget-checkbox .item-list__checkbox {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.path-hybrid-search .region--sidebar .facet-item {
+  margin-block-end: 0.35rem;
+}
+
+.path-hybrid-search .view-hybrid-content-search > .view-header {
+  margin-block-end: var(--sp1);
+}
+
+
+.path-hybrid-search .view-hybrid-content-search .view-header .views-result {
+  font-weight: 600;
+}

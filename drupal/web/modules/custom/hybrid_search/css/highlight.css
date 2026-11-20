@@ -1,0 +1,17 @@
+/**
+ * Search keyword highlights on hybrid search result excerpts.
+ *
+ * Excerpt fields use XSS filtering that often strips class attributes from
+ * <strong>, so we style bare strong inside result excerpts as well.
+ */
+
+.hybrid-search-highlight {
+  font-weight: 700;
+  background-color: #fff3cd;
+}
+
+.view-id-hybrid-content-search .hybrid-search-excerpt strong,
+.hybrid-search-excerpt strong {
+  font-weight: 700;
+  background-color: #fff3cd;
+}

@@ -1,0 +1,69 @@
+<?php
+
+/**
+ * @file
+ * Install and update hooks for Hybrid Search.
+ */
+
+declare(strict_types=1);
+
+/**
+ * Drops cached container services after removing the AI model route subscriber.
+ */
+function hybrid_search_update_9001(): string {
+  drupal_flush_all_caches();
+  return 'Rebuilt caches after removing hybrid_search route subscriber.';
+}
+
+/**
+ * Switches hybrid search fulltext filter to complex parse mode for boolean AND.
+ */
+function hybrid_search_update_9002(): string {
+  $view = \Drupal::entityTypeManager()->getStorage('view')->load('hybrid_content_search');
+  if ($view === NULL) {
+    return 'hybrid_content_search view not found; query alter still applies complex mode.';
+  }
+
+  $description = 'Keywords (Search API). Use quotes for phrases. AND / OR / NOT for boolean queries (complex parse mode). Results use highlighting and hybrid vector boost.';
+  $displays = $view->get('display');
+  $filter = &$displays['default']['display_options']['filters']['search_api_fulltext'];
+  if (!isset($filter)) {
+    return 'No search_api_fulltext filter on hybrid_content_search.';
+  }
+
+  $filter['parse_mode'] = 'complex';
+  $filter['expose']['description'] = $description;
+  $view->set('display', $displays);
+  $view->save();
+
+  return 'Hybrid search view uses complex parse mode for boolean queries.';
+}
+
+/**
+ * Attaches facet blocks to /search when the hybrid view overrides that path.
+ */
+function hybrid_search_update_9003(): string {
+  $updated = 0;
+  $storage = \Drupal::entityTypeManager()->getStorage('block');
+  foreach ($storage->loadMultiple() as $block) {
+    if (!str_contains($block->id(), '_facet_')) {
+      continue;
+    }
+    $visibility = $block->getVisibility();
+    if (!isset($visibility['request_path']['pages'])) {
+      continue;
+    }
+    $pages = $visibility['request_path']['pages'];
+    if (str_contains($pages, '/search') && str_contains($pages, '/hybrid-search')) {
+      continue;
+    }
+    $visibility['request_path']['pages'] = trim($pages) . "\r\n/search\r\n/search/*";
+    $block->setVisibilityConfig('request_path', $visibility['request_path']);
+    $block->save();
+    $updated++;
+  }
+
+  return $updated > 0
+    ? "Facet block visibility includes /search paths ({$updated} block(s))."
+    : 'Facet blocks already include /search or none were updated.';
+}

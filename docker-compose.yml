@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: drupal_vector_postgres
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: drupal
+      POSTGRES_USER: drupal
+      POSTGRES_PASSWORD: drupal_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    shm_size: 1gb
+    command:
+      - postgres
+      - -c
+      - shared_buffers=1GB
+      - -c
+      - maintenance_work_mem=512MB
+      - -c
+      - work_mem=16MB
+      - -c
+      - effective_cache_size=2GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U drupal -d drupal"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    restart: unless-stopped
+
+  drupal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: drupal-vector-search:11
+    container_name: drupal_vector_web
+    ports:
+      - "8088:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./drupal:/opt/drupal
+    environment:
+      COMPOSER_MEMORY_LIMIT: "-1"
+    healthcheck:
+      test: ["CMD-SHELL", "php -r \"exit(@fsockopen('127.0.0.1', 80) ? 0 : 1);\""]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

@@ -1,0 +1,177 @@
+<?php
+
+/**
+ * @file
+ * Hybrid vector and keyword search integration.
+ */
+
+declare(strict_types=1);
+
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Url;
+use Drupal\hybrid_search\Utility\ExcerptLead;
+use Drupal\hybrid_search\Utility\HighlightKeys;
+use Drupal\hybrid_search\Utility\StrictKeywordQuery;
+use Drupal\node\NodeInterface;
+use Drupal\search_api\IndexInterface;
+use Drupal\search_api\Item\ItemInterface;
+use Drupal\search_api\Query\QueryInterface;
+use Drupal\search_api\Query\ResultSetInterface;
+
+/**
+ * Implements hook_page_attachments().
+ *
+ * The facet stylesheet applies only on the hybrid search page.
+ */
+function hybrid_search_page_attachments(array &$attachments): void {
+  if (hybrid_search_is_hybrid_search_route()) {
+    $attachments['#attached']['library'][] = 'hybrid_search/facets';
+    $attachments['#attached']['library'][] = 'hybrid_search/highlight';
+  }
+}
+
+/**
+ * Whether the request is on the hybrid Search API results view.
+ */
+function hybrid_search_is_hybrid_search_route(): bool {
+  $route_match = \Drupal::routeMatch();
+  if ($route_match->getParameter('view_id') === 'hybrid_content_search') {
+    return TRUE;
+  }
+
+  $route_name = $route_match->getRouteName();
+  if (in_array($route_name, ['view.hybrid_content_search.page_1', 'search.view'], TRUE)) {
+    return TRUE;
+  }
+
+  if ($route_name === 'views.ajax') {
+    return \Drupal::request()->request->get('view_name') === 'hybrid_content_search';
+  }
+
+  return FALSE;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() for search_block_form.
+ *
+ * The theme search box posts to core search. Send it to the hybrid demo page
+ * where Tags and Content type facets are available.
+ */
+function hybrid_search_form_search_block_form_alter(array &$form, FormStateInterface $form_state): void {
+  $form['#action'] = Url::fromUserInput('/hybrid-search')->toString();
+}
+
+/**
+ * Ensures boolean AND / OR / NOT uses Search API "complex" parse mode.
+ *
+ * The database backend does not interpret operators in "direct" mode; they are
+ * tokenized as literal keywords.
+ */
+function hybrid_search_search_api_query_alter(QueryInterface $query): void {
+  if ($query->getIndex()->id() !== 'content' || $query->getKeys() === NULL) {
+    return;
+  }
+
+  $parse_mode = $query->getParseMode()->getPluginId();
+  if (in_array($parse_mode, ['direct', 'terms'], TRUE)) {
+    $complex = \Drupal::service('plugin.manager.search_api.parse_mode')->createInstance('complex');
+    $query->setParseMode($complex);
+  }
+
+  // Boolean queries must match fulltext terms; vector OR-boost would surface
+  // items that only look similar (e.g. only "API" without software/development).
+  if (StrictKeywordQuery::usesExplicitBoolean($query)) {
+    StrictKeywordQuery::stripVectorBoostTags($query);
+    $query->addTag('hybrid_search_strict_keywords');
+  }
+}
+
+/**
+ * Re-highlights excerpts using parsed query terms (not boolean operators).
+ *
+ * Search API's highlight processor splits getOriginalKeys() on whitespace, so
+ * AND/OR/NOT and plural variants (APIs vs API) can be missed in excerpts.
+ */
+function hybrid_search_search_api_results_alter(ResultSetInterface $results): void {
+  $query = $results->getQuery();
+  if ($query->getIndex()->id() !== 'content' || $results->getResultCount() === 0) {
+    return;
+  }
+
+  $highlight_keys = HighlightKeys::forHighlighting($query->getKeys());
+  if ($highlight_keys === []) {
+    return;
+  }
+
+  $highlight_config = hybrid_search_highlight_processor_config($query->getIndex());
+  if ($highlight_config === NULL) {
+    return;
+  }
+
+  $prefix = (string) ($highlight_config['prefix'] ?? '<strong>');
+  $suffix = (string) ($highlight_config['suffix'] ?? '</strong>');
+  $excerpt_length = (int) ($highlight_config['excerpt_length'] ?? 256);
+
+  foreach ($results->getResultItems() as $item) {
+    $excerpt = $item->getExcerpt();
+    if ($excerpt === NULL || $excerpt === '') {
+      continue;
+    }
+
+    $plain = strip_tags(str_replace([$prefix, $suffix], '', $excerpt));
+    if ($plain === '') {
+      continue;
+    }
+
+    // Search API's highlight processor always prefixes keyword snippets with "…"
+    // even when a lead-in from the start of the body is clearer for hybrid results.
+    if (ExcerptLead::startsWithEllipsis($plain)) {
+      $lead = ExcerptLead::fromNodeBody($item, $excerpt_length);
+      $plain = $lead ?? (preg_replace('/^…\s*/u', '', $plain) ?? $plain);
+    }
+
+    $plain = hybrid_search_trim_duplicate_title_from_excerpt($plain, $item);
+    $item->setExcerpt(HighlightKeys::highlightPlainText($plain, $highlight_keys, $prefix, $suffix));
+  }
+}
+
+/**
+ * Removes a trailing "… node title …" fragment from Search API excerpts.
+ */
+function hybrid_search_trim_duplicate_title_from_excerpt(string $plain, ItemInterface $item): string {
+  $entity = $item->getOriginalObject()?->getValue();
+  if (!$entity instanceof NodeInterface) {
+    return $plain;
+  }
+
+  $title = trim($entity->label());
+  if ($title === '') {
+    return $plain;
+  }
+
+  $pattern = '/\s+…\s+' . preg_quote($title, '/') . '\s+…\s*$/u';
+  $trimmed = preg_replace($pattern, ' …', $plain);
+
+  return is_string($trimmed) ? $trimmed : $plain;
+}
+
+/**
+ * Loads highlight processor settings from the content Search API index.
+ *
+ * @return array<string, mixed>|null
+ *   Processor configuration, or NULL if highlighting is disabled on the index.
+ */
+function hybrid_search_highlight_processor_config(IndexInterface $index): ?array {
+  foreach ($index->getProcessors() as $processor) {
+    if ($processor->getPluginId() !== 'highlight') {
+      continue;
+    }
+    $config = $processor->getConfiguration();
+    if (($config['excerpt'] ?? TRUE) && ($config['highlight'] ?? 'always') !== 'never') {
+      return $config;
+    }
+    return NULL;
+  }
+
+  return NULL;
+}
